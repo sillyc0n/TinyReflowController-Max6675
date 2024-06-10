@@ -1,3 +1,4 @@
+
 /*******************************************************************************
   Title: Tiny Reflow Controller
   Version: 2.00
@@ -125,11 +126,12 @@
 // ***** INCLUDES *****
 #include <SPI.h>
 #include <Wire.h>
-#include <EEPROM.h>
-#include <LiquidCrystal.h>
+// #include <EEPROM.h>
+// #include <LiquidCrystal.h>
 #include <Adafruit_GFX.h>      // Comment for VERSION 1
 #include <Adafruit_SSD1306.h>  // Comment for VERSION 1 
-#include <Adafruit_MAX31856.h> 
+// #include <Adafruit_MAX31856.h>
+#include <max6675.h>
 #include <PID_v1.h>
 
 // ***** TYPE DEFINITIONS *****
@@ -172,9 +174,6 @@ typedef enum REFLOW_PROFILE
 } reflowProfile_t;
 
 // ***** CONSTANTS *****
-// ***** GENERAL *****
-#define VERSION 2 // Replace with 1 or 2
-
 // ***** GENERAL PROFILE CONSTANTS *****
 #define PROFILE_TYPE_ADDRESS 0
 #define TEMPERATURE_ROOM 50
@@ -213,12 +212,10 @@ typedef enum REFLOW_PROFILE
 #define PID_KI_REFLOW 0.05
 #define PID_KD_REFLOW 350
 #define PID_SAMPLE_TIME 1000
-
-#if VERSION == 2
+// ***** SCREEN *****
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 #define X_AXIS_START 18 // X-axis starting position
-#endif
 
 // ***** LCD MESSAGES *****
 const char* lcdMessagesReflowStatus[] = {
@@ -238,27 +235,17 @@ unsigned char degree[8]  = {
 };
 
 // ***** PIN ASSIGNMENT *****
-#if VERSION == 1
-unsigned char ssrPin = 3;
-unsigned char thermocoupleCSPin = 2;
-unsigned char lcdRsPin = 10;
-unsigned char lcdEPin = 9;
-unsigned char lcdD4Pin = 8;
-unsigned char lcdD5Pin = 7;
-unsigned char lcdD6Pin = 6;
-unsigned char lcdD7Pin = 5;
-unsigned char buzzerPin = 14;
-unsigned char switchPin = A1;
-unsigned char ledPin = LED_BUILTIN;
-#elif VERSION == 2
-unsigned char ssrPin = A0;
-unsigned char fanPin = A1;
+unsigned char ssrPin = 1;
+unsigned char fanPin = 5;
 unsigned char thermocoupleCSPin = 10;
 unsigned char ledPin = 4;
 unsigned char buzzerPin = 5;
 unsigned char switchStartStopPin = 3;
 unsigned char switchLfPbPin = 2;
-#endif
+// ***** THERMOCOUPLE *****
+#define CLK_PIN         7
+#define CS_MAX2_PIN     12
+#define MISO_PIN        9
 
 // ***** PID CONTROL VARIABLES *****
 double setpoint;
@@ -295,36 +282,37 @@ switch_t switchMask;
 unsigned int timerSeconds;
 // Thermocouple fault status
 unsigned char fault;
-#ifdef VERSION == 2
 unsigned int timerUpdate;
 unsigned char temperature[SCREEN_WIDTH - X_AXIS_START];
 unsigned char x;
-#endif
 
 // PID control interface
 PID reflowOvenPID(&input, &output, &setpoint, kp, ki, kd, DIRECT);
-#if VERSION == 1
-// LCD interface
-LiquidCrystal lcd(lcdRsPin, lcdEPin, lcdD4Pin, lcdD5Pin, lcdD6Pin, lcdD7Pin);
-#elif VERSION == 2
+
+// SSD1306 OLED
 Adafruit_SSD1306 oled(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire);
-#endif
-// MAX31856 thermocouple interface
-Adafruit_MAX31856 thermocouple = Adafruit_MAX31856(thermocoupleCSPin);
+
+// MAX6675 thermocouple interface
+MAX6675 thermocouple(CLK_PIN, CS_MAX2_PIN, MISO_PIN);
+
+// Declare readSwitch function
+switch_t readSwitch(void);
 
 void setup()
 {
   // Check current selected reflow profile
-  unsigned char value = EEPROM.read(PROFILE_TYPE_ADDRESS);
+  // TODO change to use Preferences.h
+  //unsigned char value = EEPROM.read(PROFILE_TYPE_ADDRESS);
+  unsigned char value = REFLOW_PROFILE_LEADFREE;
   if ((value == 0) || (value == 1))
   {
     // Valid reflow profile value
-    reflowProfile = value;
+    reflowProfile = static_cast<reflowProfile_t>(value);;
   }
   else
   {
     // Default to lead-free profile
-    EEPROM.write(PROFILE_TYPE_ADDRESS, 0);
+    // EEPROM.write(PROFILE_TYPE_ADDRESS, 0);
     reflowProfile = REFLOW_PROFILE_LEADFREE;
   }
 
@@ -340,33 +328,15 @@ void setup()
   pinMode(ledPin, OUTPUT);
   digitalWrite(ledPin, HIGH);
 
-  // Initialize thermocouple interface
-  thermocouple.begin();
-  thermocouple.setThermocoupleType(MAX31856_TCTYPE_K);
-
   // Start-up splash
   digitalWrite(buzzerPin, HIGH);
-#if VERSION == 1
-  lcd.begin(8, 2);
-  lcd.createChar(0, degree);
-  lcd.clear();
-  lcd.print(F(" Tiny  "));
-  lcd.setCursor(0, 1);
-  lcd.print(F(" Reflow "));
-#elif VERSION == 2
+
   oled.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   oled.display();
-#endif
+
   digitalWrite(buzzerPin, LOW);
   delay(2000);
-#if VERSION == 1
-  lcd.clear();
-  lcd.print(F(" v1.00  "));
-  lcd.setCursor(0, 1);
-  lcd.print(F("26-07-17"));
-  delay(2000);
-  lcd.clear();
-#elif VERSION == 2
+
   oled.clearDisplay();
   oled.setTextSize(1);
   oled.setTextColor(WHITE);
@@ -380,7 +350,6 @@ void setup()
   oled.display();
   delay(3000);
   oled.clearDisplay();
-#endif
 
   // Serial communication at 115200 bps
   Serial.begin(115200);
@@ -408,19 +377,10 @@ void loop()
     // Read thermocouple next sampling period
     nextRead += SENSOR_SAMPLING_TIME;
     // Read current temperature
-    input = thermocouple.readThermocoupleTemperature();
-    // Check for thermocouple fault
-    fault = thermocouple.readFault();
+    input = thermocouple.readCelsius();    
 
     // If any thermocouple fault is detected
-    if ((fault & MAX31856_FAULT_CJRANGE) ||
-        (fault & MAX31856_FAULT_TCRANGE) ||
-        (fault & MAX31856_FAULT_CJHIGH) ||
-        (fault & MAX31856_FAULT_CJLOW) ||
-        (fault & MAX31856_FAULT_TCHIGH) ||
-        (fault & MAX31856_FAULT_TCLOW) ||
-        (fault & MAX31856_FAULT_OVUV) ||
-        (fault & MAX31856_FAULT_OPEN))
+    if (isnan(input))
     {
       // Illegal operation
       reflowState = REFLOW_STATE_ERROR;
@@ -715,17 +675,7 @@ void loop()
 
     case REFLOW_STATE_ERROR:
       // Check for thermocouple fault
-      fault = thermocouple.readFault();
-
-      // If thermocouple problem is still present
-      if ((fault & MAX31856_FAULT_CJRANGE) ||
-          (fault & MAX31856_FAULT_TCRANGE) ||
-          (fault & MAX31856_FAULT_CJHIGH) ||
-          (fault & MAX31856_FAULT_CJLOW) ||
-          (fault & MAX31856_FAULT_TCHIGH) ||
-          (fault & MAX31856_FAULT_TCLOW) ||
-          (fault & MAX31856_FAULT_OVUV) ||
-          (fault & MAX31856_FAULT_OPEN))
+      if (isnan(input))
       {
         // Wait until thermocouple wire is connected
         reflowState = REFLOW_STATE_ERROR;
@@ -762,14 +712,16 @@ void loop()
       {
         // Switch to leaded reflow profile
         reflowProfile = REFLOW_PROFILE_LEADED;
-        EEPROM.write(PROFILE_TYPE_ADDRESS, 1);
+        // TODO rewrite with Preferences.h
+        // EEPROM.write(PROFILE_TYPE_ADDRESS, 1);
       }
       // Currently using leaded reflow profile
       else
       {
         // Switch to lead-free profile
         reflowProfile = REFLOW_PROFILE_LEADFREE;
-        EEPROM.write(PROFILE_TYPE_ADDRESS, 0);
+        // TODO rewrite with Preferences.h
+        // EEPROM.write(PROFILE_TYPE_ADDRESS, 0);
       }
     }
   }
@@ -853,22 +805,10 @@ void loop()
 switch_t readSwitch(void)
 {
   int switchAdcValue = 0;
-#if VERSION == 1
-  // Analog multiplexing switch
-  switchAdcValue = analogRead(switchPin);
 
-  // Add some allowance (+10 ADC step) as ADC reading might be off a little
-  // due to 3V3 deviation and also resistor value tolerance
-  if (switchAdcValue >= 1000) return SWITCH_NONE;
-  if (switchAdcValue <= 10) return SWITCH_1;
-  if (switchAdcValue <= 522) return SWITCH_2;
-
-#elif VERSION == 2
   // Switch connected directly to individual separate pins
   if (digitalRead(switchStartStopPin) == LOW) return SWITCH_1;
   if (digitalRead(switchLfPbPin) == LOW) return SWITCH_2;
-
-#endif
 
   return SWITCH_NONE;
 }

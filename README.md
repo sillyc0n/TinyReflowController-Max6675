@@ -1,2 +1,40 @@
-# Tiny Reflow Controller
-An all-in-one Arduino compatible reflow controller powered by ATmega328P (V2) or ATtiny1634R (V1). A reincarnation of the Reflow Oven Controller Shield that requires an external Arduino board like Arduino Uno based on user feedbacks over the years. Powered by the ATmega328P/ATtiny1634R coupled with the latest thermocouple sensor interface IC MAX31856 from Maxim, we managed to remove the need of an Arduino board and reduce the overall cost. We also use as much SMD parts in this revision to keep the cost low (manual soldering and left over residue cleaning is time consuming) and leaving only the terminal block and the LCD connector on through hole version. We also managed to streamline all components to run on 3.3V to further simplify the design. All you need is an external Solid State Relay (SSR) (rated accordingly to your oven), K type thermocouple (we recommend those with fiber glass or steel jacket), and an oven of course! You can now select to run a lead-free profile or leaded profile from the selection switch. V2 comes with 0.96" 128*64 OLED LCD to plot the real-time reflow curve and has a built-in serial-USB interface. V2 also has an optional transistor output drive fan if needed. 
+Porting Rocket Scream's TinyReflow Controller V2 Firmware to Makermoekoe's Reflow Controller Board
+
+This project aims to port the TinyReflow controller V2 firmware developed by Rocket Scream to the Reflow Controller board designed by Makermoekoe. The goal is to enable users of the Reflow Controller board to benefit from the features provided by the TinyReflow firmware.
+
+Project Goals
+
+    Port the TinyReflow Firmware: Adapt the existing TinyReflow firmware to run on the hardware architecture of the Reflow Controller board.
+    Expand Functionality: Integrate additional features and capabilities available on the Reflow Controller board, enhancing the functionality of the system beyond what was originally offered by the TinyReflow controller.
+
+Getting Started
+Prerequisites
+
+Before starting, ensure you have the following:
+
+    Basic knowledge of electronics and soldering.
+    A Reflow Controller board from Makermoekoe.
+    Programming tools and software compatible with the Reflow Controller board (e.g., PlatformIO and Visual Studio Code).
+
+Setup
+
+    Clone the Repository: Clone this repository to your local machine to access the latest version of the ported firmware.
+
+git clone https://github.com/sillyc0n/TinyReflowController-Max6675
+cd TinyReflowController-Max6675
+
+    Install Dependencies
+    Configure the Environment
+    Build the Firmware
+    Flash the Firmware
+    Test the System
+
+Contributing
+
+Contributions to this project are welcome whether you're interested in helping with coding, testing, documentation, or providing feedback, please reach out through the project's GitHub issues page or contact the maintainers directly.
+License
+
+This project is licensed under the Creative Commons Attribution-ShareAlike 4.0 International Public
+License - see the LICENSE.md file for details.
+
+This README provides a structured overview of the project, including its goals, setup instructions, and contribution guidelines. Feel free to modify it as needed to better fit the specific requirements and details of your project.
