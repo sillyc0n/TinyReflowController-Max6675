@@ -124,13 +124,9 @@
 *******************************************************************************/
 
 // ***** INCLUDES *****
-#include <SPI.h>
-#include <Wire.h>
-// #include <EEPROM.h>
-// #include <LiquidCrystal.h>
-#include <Adafruit_GFX.h>      // Comment for VERSION 1
-#include <Adafruit_SSD1306.h>  // Comment for VERSION 1 
-// #include <Adafruit_MAX31856.h>
+#include <Arduino.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 #include <max6675.h>
 #include <PID_v1.h>
 
@@ -420,42 +416,7 @@ void loop()
   {
     // Update LCD in the next 100 ms
     updateLcd += UPDATE_RATE;
-#if VERSION == 1
-    // Clear LCD
-    lcd.clear();
-    // Print current system state
-    lcd.print(lcdMessagesReflowStatus[reflowState]);
-    lcd.setCursor(6, 0);
-    if (reflowProfile == REFLOW_PROFILE_LEADFREE)
-    {
-	    lcd.print(F("LF"));
-    }
-    else
-    {
-      lcd.print(F("PB"));
-    }
-    lcd.setCursor(0, 1);
-    
-    // If currently in error state
-    if (reflowState == REFLOW_STATE_ERROR)
-    {
-      // Thermocouple error (open, shorted)
-      lcd.print(F("TC Error"));
-    }
-    else
-    {
-      // Display current temperature
-      lcd.print(input);
-#if ARDUINO >= 100
-      // Display degree Celsius symbol
-      lcd.write((uint8_t)0);
-#else
-      // Display degree Celsius symbol
-      lcd.print(0, BYTE);
-#endif
-      lcd.print("C ");
-    }
-#elif VERSION == 2
+
     oled.clearDisplay();
     oled.setTextSize(2);
     oled.setCursor(0, 0);
@@ -528,7 +489,6 @@ void loop()
     
     // Update screen
     oled.display();
-#endif
   }
 
   // Reflow oven controller state machine
