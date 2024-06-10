@@ -154,7 +154,8 @@ typedef	enum SWITCH
 {
   SWITCH_NONE,
   SWITCH_1,
-  SWITCH_2
+  SWITCH_2,
+  SWITCH_3
 } switch_t;
 
 typedef enum DEBOUNCE_STATE
@@ -236,8 +237,10 @@ unsigned char ssrPin = 1;
 unsigned char fanPin = 5;
 // unsigned char ledPin = 4;
 #define BUZZER_PIN      15
-unsigned char switchStartStopPin = 39;
-unsigned char switchLfPbPin = 40;
+#define SWITCH_START_STOP_PIN 36
+#define SWITCH_PROFILE_PIN 39
+#define SWITCH_PROFILE_DOWN_PIN 40
+
 // ***** THERMOCOUPLE *****
 #define CLK_PIN         7
 #define CS_MAX2_PIN     12
@@ -329,6 +332,10 @@ void setup()
   digitalWrite(BUZZER_PIN, LOW);
   Serial.println("Buzzer initialized.");
 
+  // Buttons
+  pinMode(SWITCH_START_STOP_PIN, INPUT);
+  pinMode(SWITCH_PROFILE_PIN, INPUT);
+
   // LED pins initialization and turn on upon start-up (active high)
   // TODO handle leds
   // pinMode(ledPin, OUTPUT);
@@ -338,8 +345,6 @@ void setup()
   int nDevices;
   Serial.println("Scanning...");
   nDevices = 0;
-
-  
 
   // Start-up splash
   digitalWrite(BUZZER_PIN, HIGH);
@@ -536,8 +541,7 @@ void loop()
           Serial.println(F("Time,Setpoint,Input,Output"));
           // Intialize seconds timer for serial debug information
           timerSeconds = 0;
-          
-          #if VERSION == 2
+                    
           // Initialize reflow plot update timer
           timerUpdate = 0;
           
@@ -546,8 +550,7 @@ void loop()
             temperature[x] = 0;
           }
           // Initialize index for average temperature array used for reflow plot
-          x = 0;
-          #endif
+          x = 0;          
           
           // Initialize PID control window starting time
           windowStartTime = millis();
@@ -692,7 +695,7 @@ void loop()
   else if (switchStatus == SWITCH_2)
   {
     // Only can switch reflow profile during idle
-    if (reflowState == REFLOW_STATE_IDLE)
+    if (reflowState == REFLOW_STATE_IDLE || reflowState == REFLOW_STATE_ERROR)
     {
       // Currently using lead-free reflow profile
       if (reflowProfile == REFLOW_PROFILE_LEADFREE)
@@ -794,8 +797,18 @@ switch_t readSwitch(void)
   int switchAdcValue = 0;
 
   // Switch connected directly to individual separate pins
-  if (digitalRead(switchStartStopPin) == LOW) return SWITCH_1;
-  if (digitalRead(switchLfPbPin) == LOW) return SWITCH_2;
+  if (digitalRead(SWITCH_START_STOP_PIN) == HIGH) {
+    Serial.println("Pressed SWITCH_1");
+    return SWITCH_1;    
+  }
+  if (digitalRead(SWITCH_PROFILE_PIN) == HIGH) {
+    Serial.println("Pressed SWITCH_2");
+    return SWITCH_2;
+  }
+  if (digitalRead(SWITCH_PROFILE_DOWN_PIN) == HIGH) {
+    Serial.println("Pressed SWITCH_2");
+    return SWITCH_3;
+  }
 
   return SWITCH_NONE;
 }
