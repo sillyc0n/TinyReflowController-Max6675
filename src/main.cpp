@@ -233,8 +233,8 @@ unsigned char degree[8]  = {
 };
 
 // ***** PIN ASSIGNMENT *****
-unsigned char ssrPin = 1;
-unsigned char fanPin = 5;
+#define SSR1_PIN        1
+#define FAN_PIN         5;        // not used
 // unsigned char ledPin = 4;
 #define BUZZER_PIN      15
 #define SWITCH_START_STOP_PIN 36
@@ -245,6 +245,10 @@ unsigned char fanPin = 5;
 #define CLK_PIN         7
 #define CS_MAX2_PIN     12
 #define MISO_PIN        9
+
+// **** SSD1306 OLED *****
+#define SDA_PIN         33
+#define SCL_PIN         35
 
 // ***** PID CONTROL VARIABLES *****
 double setpoint;
@@ -297,13 +301,17 @@ MAX6675 thermocouple(CLK_PIN, CS_MAX2_PIN, MISO_PIN);
 // Declare readSwitch function
 switch_t readSwitch(void);
 
+// PWM
+int dutyCycle = 100;
+const int PWMFreq = 20000;                                //50hz
+const int PWMChannel = 0;
+const int PWMResolution = 10;   
+
 void setup()
 {
   // Serial communication at 115200 bps
   Serial.begin(115200);
   Serial.println("Initialization started.");
-
-  
 
   // Check current selected reflow profile
   // TODO change to use Preferences.h
@@ -312,7 +320,7 @@ void setup()
   if ((value == 0) || (value == 1))
   {
     // Valid reflow profile value
-    reflowProfile = static_cast<reflowProfile_t>(value);;
+    reflowProfile = static_cast<reflowProfile_t>(value);
   }
   else
   {
@@ -323,13 +331,23 @@ void setup()
   Serial.println("Profile information read.");
 
   // SSR pin initialization to ensure reflow oven is off
-  pinMode(ssrPin, OUTPUT);
-  digitalWrite(ssrPin, LOW);
+  pinMode(SSR1_PIN, OUTPUT);
+  digitalWrite(SSR1_PIN, LOW);
   Serial.println("SSR initialized.");
 
   // Buzzer pin initialization to ensure annoying buzzer is off
   pinMode(BUZZER_PIN, OUTPUT);
   digitalWrite(BUZZER_PIN, LOW);
+  
+  // configure BUZZER tone
+  ledcSetup(PWMChannel, PWMFreq, PWMResolution);
+  ledcAttachPin(BUZZER_PIN, PWMChannel);
+  ledcWrite(PWMChannel, dutyCycle);
+
+  ledcWrite(PWMChannel, 500);
+  delay(200);
+  ledcWrite(PWMChannel, 0); 
+
   Serial.println("Buzzer initialized.");
 
   // Buttons
@@ -347,9 +365,9 @@ void setup()
   nDevices = 0;
 
   // Start-up splash
-  digitalWrite(BUZZER_PIN, HIGH);
+  // digitalWrite(BUZZER_PIN, HIGH);
 
-  Wire.setPins(33, 35);
+  Wire.setPins(SDA_PIN, SCL_PIN);
   Wire.begin();
   
   oled = Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, 45);
@@ -695,7 +713,7 @@ void loop()
   else if (switchStatus == SWITCH_2)
   {
     // Only can switch reflow profile during idle
-    if (reflowState == REFLOW_STATE_IDLE || reflowState == REFLOW_STATE_ERROR)
+    if (reflowState == REFLOW_STATE_IDLE)
     {
       // Currently using lead-free reflow profile
       if (reflowProfile == REFLOW_PROFILE_LEADFREE)
@@ -782,13 +800,13 @@ void loop()
       // Time to shift the Relay Window
       windowStartTime += windowSize;
     }
-    if (output > (now - windowStartTime)) digitalWrite(ssrPin, HIGH);
-    else digitalWrite(ssrPin, LOW);
+    if (output > (now - windowStartTime)) digitalWrite(SSR1_PIN, HIGH);
+    else digitalWrite(SSR1_PIN, LOW);
   }
   // Reflow oven process is off, ensure oven is off
   else
   {
-    digitalWrite(ssrPin, LOW);
+    digitalWrite(SSR1_PIN, LOW);
   }
 }
 
