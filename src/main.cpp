@@ -125,6 +125,7 @@
 
 // ***** INCLUDES *****
 #include <Arduino.h>
+#include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <max6675.h>
@@ -233,11 +234,10 @@ unsigned char degree[8]  = {
 // ***** PIN ASSIGNMENT *****
 unsigned char ssrPin = 1;
 unsigned char fanPin = 5;
-unsigned char thermocoupleCSPin = 10;
-unsigned char ledPin = 4;
-unsigned char buzzerPin = 5;
-unsigned char switchStartStopPin = 3;
-unsigned char switchLfPbPin = 2;
+// unsigned char ledPin = 4;
+#define BUZZER_PIN      15
+unsigned char switchStartStopPin = 39;
+unsigned char switchLfPbPin = 40;
 // ***** THERMOCOUPLE *****
 #define CLK_PIN         7
 #define CS_MAX2_PIN     12
@@ -286,7 +286,7 @@ unsigned char x;
 PID reflowOvenPID(&input, &output, &setpoint, kp, ki, kd, DIRECT);
 
 // SSD1306 OLED
-Adafruit_SSD1306 oled(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire);
+Adafruit_SSD1306 oled;
 
 // MAX6675 thermocouple interface
 MAX6675 thermocouple(CLK_PIN, CS_MAX2_PIN, MISO_PIN);
@@ -296,6 +296,12 @@ switch_t readSwitch(void);
 
 void setup()
 {
+  // Serial communication at 115200 bps
+  Serial.begin(115200);
+  Serial.println("Initialization started.");
+
+  
+
   // Check current selected reflow profile
   // TODO change to use Preferences.h
   //unsigned char value = EEPROM.read(PROFILE_TYPE_ADDRESS);
@@ -311,26 +317,46 @@ void setup()
     // EEPROM.write(PROFILE_TYPE_ADDRESS, 0);
     reflowProfile = REFLOW_PROFILE_LEADFREE;
   }
+  Serial.println("Profile information read.");
 
   // SSR pin initialization to ensure reflow oven is off
-  digitalWrite(ssrPin, LOW);
   pinMode(ssrPin, OUTPUT);
+  digitalWrite(ssrPin, LOW);
+  Serial.println("SSR initialized.");
 
   // Buzzer pin initialization to ensure annoying buzzer is off
-  digitalWrite(buzzerPin, LOW);
-  pinMode(buzzerPin, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
+  Serial.println("Buzzer initialized.");
 
   // LED pins initialization and turn on upon start-up (active high)
-  pinMode(ledPin, OUTPUT);
-  digitalWrite(ledPin, HIGH);
+  // TODO handle leds
+  // pinMode(ledPin, OUTPUT);
+  // digitalWrite(ledPin, HIGH);
+
+  byte error, address;
+  int nDevices;
+  Serial.println("Scanning...");
+  nDevices = 0;
+
+  
 
   // Start-up splash
-  digitalWrite(buzzerPin, HIGH);
+  digitalWrite(BUZZER_PIN, HIGH);
 
-  oled.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  Wire.setPins(33, 35);
+  Wire.begin();
+  
+  oled = Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, 45);
+  bool displayInitialized = oled.begin(SSD1306_SWITCHCAPVCC, 0x3C, true, true);
+  if (displayInitialized){ 
+    Serial.println("Display initialized.");
+  } else {
+    Serial.println("Error initialized display.");
+  }
   oled.display();
-
-  digitalWrite(buzzerPin, LOW);
+  
+  digitalWrite(BUZZER_PIN, LOW);
   delay(2000);
 
   oled.clearDisplay();
@@ -347,11 +373,9 @@ void setup()
   delay(3000);
   oled.clearDisplay();
 
-  // Serial communication at 115200 bps
-  Serial.begin(115200);
-
   // Turn off LED (active high)
-  digitalWrite(ledPin, LOW);
+  // digitalWrite(ledPin, LOW);
+
   // Set window size
   windowSize = 2000;
   // Initialize time keeping variable
@@ -360,6 +384,7 @@ void setup()
   nextRead = millis();
   // Initialize LCD update timer
   updateLcd = millis();
+  Serial.println("Initialization complete.");
 }
 
 void loop()
@@ -393,7 +418,8 @@ void loop()
     if (reflowStatus == REFLOW_STATUS_ON)
     {
       // Toggle red LED as system heart beat
-      digitalWrite(ledPin, !(digitalRead(ledPin)));
+      // TODO 
+      // digitalWrite(ledPin, !(digitalRead(ledPin)));
       // Increase seconds timer for reflow curve plot
       timerSeconds++;
       // Send temperature and time stamp to serial
@@ -408,7 +434,8 @@ void loop()
     else
     {
       // Turn off red LED
-      digitalWrite(ledPin, LOW);
+      // TODO 
+      // digitalWrite(ledPin, LOW);
     }
   }
 
@@ -606,7 +633,7 @@ void loop()
         // Retrieve current time for buzzer usage
         buzzerPeriod = millis() + 1000;
         // Turn on buzzer to indicate completion
-        digitalWrite(buzzerPin, HIGH);
+        digitalWrite(BUZZER_PIN, HIGH);
         // Turn off reflow process
         reflowStatus = REFLOW_STATUS_OFF;
         // Proceed to reflow Completion state
@@ -618,7 +645,7 @@ void loop()
       if (millis() > buzzerPeriod)
       {
         // Turn off buzzer
-        digitalWrite(buzzerPin, LOW);
+        digitalWrite(BUZZER_PIN, LOW);
         // Reflow process ended
         reflowState = REFLOW_STATE_IDLE;
       }
