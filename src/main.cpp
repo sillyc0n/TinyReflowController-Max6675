@@ -125,6 +125,7 @@
 
 // ***** INCLUDES *****
 #include <Arduino.h>
+#include <FastLED.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -227,11 +228,6 @@ const char* lcdMessagesReflowStatus[] = {
   "Error"
 };
 
-// ***** DEGREE SYMBOL FOR LCD *****
-unsigned char degree[8]  = {
-  140, 146, 146, 140, 128, 128, 128, 128
-};
-
 // ***** PIN ASSIGNMENT *****
 #define SSR1_PIN        1
 #define FAN_PIN         5;        // not used
@@ -244,15 +240,21 @@ unsigned char degree[8]  = {
 // ***** THERMOCOUPLE *****
 #define CLK_PIN         7
 #define CS_MAX2_PIN     12
+#define CS_MAX1_PIN     13
 #define MISO_PIN        9
 
-// **** SSD1306 OLED *****
+// ***** SSD1306 OLED *****
 #define SDA_PIN         33
 #define SCL_PIN         35
+
+// ***** LED *****
+#define APA102_SDI_PIN  38
+#define APA102_CLK_PIN  37
 
 // ***** PID CONTROL VARIABLES *****
 double setpoint;
 double input;
+float temp2;
 double output;
 double kp = PID_KP_PREHEAT;
 double ki = PID_KI_PREHEAT;
@@ -296,7 +298,11 @@ PID reflowOvenPID(&input, &output, &setpoint, kp, ki, kd, DIRECT);
 Adafruit_SSD1306 oled;
 
 // MAX6675 thermocouple interface
-MAX6675 thermocouple(CLK_PIN, CS_MAX2_PIN, MISO_PIN);
+MAX6675 thermocouple1(CLK_PIN, CS_MAX2_PIN, MISO_PIN);
+MAX6675 thermocouple2(CLK_PIN, CS_MAX1_PIN, MISO_PIN);
+
+// LED
+CRGB rgbLed = CRGB::Black;
 
 // Declare readSwitch function
 switch_t readSwitch(void);
@@ -359,11 +365,6 @@ void setup()
   // pinMode(ledPin, OUTPUT);
   // digitalWrite(ledPin, HIGH);
 
-  byte error, address;
-  int nDevices;
-  Serial.println("Scanning...");
-  nDevices = 0;
-
   // Start-up splash
   // digitalWrite(BUZZER_PIN, HIGH);
 
@@ -371,7 +372,7 @@ void setup()
   Wire.begin();
   
   oled = Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, 45);
-  bool displayInitialized = oled.begin(SSD1306_SWITCHCAPVCC, 0x3C, true, true);
+  bool displayInitialized = oled.begin(SSD1306_SWITCHCAPVCC, 0x3C, true);
   if (displayInitialized){ 
     Serial.println("Display initialized.");
   } else {
@@ -393,8 +394,15 @@ void setup()
   oled.println();
   oled.println(F("      04-03-19"));
   oled.display();
+  
   delay(3000);
   oled.clearDisplay();
+
+  // Setup LED
+  FastLED.addLeds<APA102, APA102_SDI_PIN, APA102_CLK_PIN, BGR>(&rgbLed, 1);
+  FastLED.setBrightness(100);
+  rgbLed = CRGB::Black;
+  FastLED.show();
 
   // Turn off LED (active high)
   // digitalWrite(ledPin, LOW);
@@ -413,15 +421,21 @@ void setup()
 void loop()
 {
   // Current time
-  unsigned long now;
+  unsigned long now;  
 
   // Time to read thermocouple?
   if (millis() > nextRead)
   {
+    /*rgbLed = (rgbLed != CRGB::Black ? CRGB::Black: CRGB::White);
+    FastLED.show();*/
+    /*sprintf(buffer, "LED turned: %d", rgbLed);
+    Serial.println(buffer);*/
+
     // Read thermocouple next sampling period
     nextRead += SENSOR_SAMPLING_TIME;
     // Read current temperature
-    input = thermocouple.readCelsius();    
+    input = thermocouple1.readCelsius();
+    temp2 = thermocouple2.readCelsius();
 
     // If any thermocouple fault is detected
     if (isnan(input))
@@ -511,6 +525,16 @@ void loop()
       oled.print(input);
       oled.print((char)247);
       oled.print(F("C"));
+
+      if (!isnan(temp2)) {
+        if (temp2 < 10) oled.setCursor(91, 19);
+        else if (temp2 < 100) oled.setCursor(85,19);
+        else oled.setCursor(80, 19);
+        // Display current temperature
+        oled.print(temp2);
+        oled.print((char)247);
+        oled.print(F("C")); 
+      }     
     }
     
     if (reflowStatus == REFLOW_STATUS_ON)
@@ -794,39 +818,55 @@ void loop()
     now = millis();
 
     reflowOvenPID.Compute();
+    
+    // if (output > (now - windowStartTime))
+    if (now < output + windowStartTime)
+    {
+      digitalWrite(SSR1_PIN, HIGH);
+      rgbLed = CRGB::Red;
+      FastLED.show();
+    } 
+    else 
+    {
+      digitalWrite(SSR1_PIN, LOW);
+      rgbLed = CRGB::Black;
+      FastLED.show();
+    }
 
-    if ((now - windowStartTime) > windowSize)
+        //if ((now - windowStartTime) > windowSize)
+    if (now > windowStartTime + windowSize)
     {
       // Time to shift the Relay Window
       windowStartTime += windowSize;
     }
-    if (output > (now - windowStartTime)) digitalWrite(SSR1_PIN, HIGH);
-    else digitalWrite(SSR1_PIN, LOW);
   }
   // Reflow oven process is off, ensure oven is off
   else
   {
     digitalWrite(SSR1_PIN, LOW);
+    rgbLed = CRGB::Black;
+      FastLED.show();
   }
 }
 
 switch_t readSwitch(void)
 {
   int switchAdcValue = 0;
+  switch_t currentSwitch = SWITCH_NONE;
 
   // Switch connected directly to individual separate pins
-  if (digitalRead(SWITCH_START_STOP_PIN) == HIGH) {
-    Serial.println("Pressed SWITCH_1");
-    return SWITCH_1;    
+  if (digitalRead(SWITCH_START_STOP_PIN) == HIGH)
+  {
+    currentSwitch =  SWITCH_1;    
   }
-  if (digitalRead(SWITCH_PROFILE_PIN) == HIGH) {
-    Serial.println("Pressed SWITCH_2");
-    return SWITCH_2;
+  else if (digitalRead(SWITCH_PROFILE_PIN) == HIGH)
+  {
+    currentSwitch =  SWITCH_2;
   }
-  if (digitalRead(SWITCH_PROFILE_DOWN_PIN) == HIGH) {
-    Serial.println("Pressed SWITCH_2");
-    return SWITCH_3;
+  else if (digitalRead(SWITCH_PROFILE_DOWN_PIN) == HIGH)
+  {
+    currentSwitch =  SWITCH_3;
   }
 
-  return SWITCH_NONE;
+  return currentSwitch;
 }
